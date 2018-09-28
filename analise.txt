@@ -24,3 +24,8 @@ Requisito 3: paralelepípedo
 --------Fazer:
     Dividir os requisitos em funções que devem ser implementadas
     Construir o corpo da função main
+--------Usefull links:
+
+https://www.devpy.me/what-is-stereo-matching/
+
+http://homepages.inf.ed.ac.uk/rbf/CVonline/LOCAL_COPIES/OWENS/LECT11/node5.html

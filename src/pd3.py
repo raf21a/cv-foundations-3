@@ -3,25 +3,41 @@ import numpy as np
 import sys
 import argparse
 import time
+import pdb
 
-DEFAULT_WINDOW = 5
+DEFAULT_WINDOW = 15
 FOCAL_DISTANCE = 3740 #px
 BASELINE = 160 #mm
+THRESHOLD = 50
+
+
+def check_positive_odd(value):
+    ivalue = int(value)
+    if ivalue % 2 == 0 or ivalue <= 0:
+         raise argparse.ArgumentTypeError("%s is an even value or not positive" % value)
+    return ivalue
+
 
 parser = argparse.ArgumentParser(
     description="Visão Stereo")
-parser.add_argument("requisito", type=int, nargs=1, choices=range(1, 5),
-                    help="número do requisito de avaliação")
-parser.add_argument("-imageL", nargs="?", default=None, metavar="path/to/file",
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument("--r1", action="store_true",
+                    help="Requisito 1")
+group.add_argument("--r2", action="store_true",
+                    help="Requisito 2")
+group.add_argument("--r3", action="store_true",
+                    help="Requisito 3")
+parser.add_argument("--img_l", nargs="?", default=None, metavar="path/to/file",
                     help="Caminho para a imagem da esquerda")
-parser.add_argument("-imageR", nargs="?", default=None, metavar="path/to/file",
+parser.add_argument("--img_r", nargs="?", default=None, metavar="path/to/file",
                     help="Caminho para a imagem da direita")
-parser.add_argument("-sizeWindow", nargs="?", default=DEFAULT_SQUARE, type=float,
-                    help="Tamanho da janela utilizazada para o calculo stereoMacthing")
+parser.add_argument("--windowSize", nargs="?", default=DEFAULT_WINDOW, type=check_positive_odd,
+                    help="Tamanho da janela utilizazada para o calculo stereoMatching")
+
 
 def openImage(file):
     if file is None:
-        filename = "data/lena.png"
+        filename = "data/aloeL.png"
     else:
         filename = file
     img = cv2.imread(filename)
@@ -30,51 +46,72 @@ def openImage(file):
     return img
 
 def saveImgMaps(img,typeMap):
+    pass
+
 
 def normalize(img):
     #function
     return img
 
-def findPixelMatched(imageSplitL, imageSplitR, sizeWindow, x, y):
+def findPixelMatch(leftImage, rightImage, windowSize):
     #para o pixel x y imgL achar o correspondente na imgR 
     #    Se não hover correspondencia retorna none
     #    Se houver retorna a coordenada da correspondencia
     #function
-    return x,y
+    stereo = cv2.StereoBM_create(numDisparities=160, blockSize=windowSize)
+    lGray = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
+    rGray = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
+    return stereo.compute(lGray,rGray)
 
-def calcWorldCoords(xl, yl, xr, yr):
-    X = (BASELINE/2)*((xl + xr)/(xl - xr))
-    Y = (BASELINE/2)*((yl + yr)/(xl - xr))
-    Z = (BASELINE*FOCAL_DISTANCE)/(xl - xr)
-    return X, Y, Z
 
-def createDethDistMaps(imageL, imageR, sizeWindow):
-    #para todo pixel em imageL
-    #    findPixelMatched
-    #    calcWorldCoords com as coordenadas de correspondencia calcular as coordenadas no mundo
-    #    calcula e adiciona a disparidade entre os pixels no numpy vetor disp_map
-    #    adicionar ao vetor numpy world_coords
-    #calcula o depth_map a partir de do world_coords
-    #normaliza o depth_map
-    #normaliza o dist_map
-    #salva os mapas
-    saveImgMaps("depth", imageL, depth_map)
-    saveImgMaps("disp", imageL, disp_map)
-    return 
+def getWorldCoords(leftImage, corMatrix):
+    x_coords = np.arange(0, leftImage.shape[1]).reshape(leftImage.shape[1], 1).T
+    y_coords = np.arange(0, leftImage.shape[0]).reshape(leftImage.shape[0], 1)
+    x = BASELINE * (2 * x_coords - corMatrix) / (2 * corMatrix)
+    y = BASELINE * (2 * y_coords) / (2 * corMatrix)
+    z = BASELINE * FOCAL_DISTANCE  / (2 * corMatrix)
+    return np.stack([x, y, z], axis=-1) 
 
-def main(requisite, imageL=None,
-         imageR=None, sizeWindow=DEFAULT_WINDOW):
-    if requisite == 1:
-        return createDethDistMaps(imageL, imageR, sizeWindow)
-    elif requisite == 2:
-        return None
-    elif requisite == 3:
-        return None
-    elif requisite == 4:
-        return None
+def createDepthMap(imageL, imageR, windowSize):
+    if windowSize == DEFAULT_WINDOW:
+        print("Usando janela de comparação de tamanho {}. Use a opção --windowSize para outro tamanho".format(DEFAULT_WINDOW))
+    if imageL is None or imageR is None:
+        imageL = "../data/aloeL.png"
+        print("Criando mapa de profundidade para aloe. Caso deseje a do bebe, use a opção -imageL and -imageR com as imagens correspondentes.")
+        leftImage = openImage("../data/aloeL.png")
+        rightImage = openImage("../data/aloeR.png")
+    else:
+        leftImage = openImage(imageL)
+        rightImage = openImage(imageR)
+    corMatrix = findPixelMatch(leftImage, rightImage, windowSize)
+    worldCoords = getWorldCoords(leftImage, corMatrix)
+    z = worldCoords[:, :, -1]
+    z[z == np.inf] = -np.inf
+    z[z == -np.inf] = np.max(z)
+    worldCoords[worldCoords == np.inf] = np.max(worldCoords)
+    dispMatrix = cv2.normalize(np.abs(corMatrix), dst=np.zeros(corMatrix.shape),
+                               alpha=0, beta=255, norm_type=cv2.NORM_MINMAX,
+                               dtype=cv2.CV_8U)
+    depthMatrix = cv2.normalize(z, dst=np.zeros(z.shape),
+                               alpha=0, beta=255, norm_type=cv2.NORM_MINMAX,
+                               dtype=cv2.CV_8U)
+    print("Salvando disp image em data...")
+    cv2.imwrite(imageL.rstrip("L.png") + "_disp.png", dispMatrix)
+    print("Salvando depth image em data...")
+    cv2.imwrite(imageL.rstrip("L.png") + "_depth.png", depthMatrix)
+
+
+def main(r1, r2, r3, imageL=None,
+         imageR=None, windowSize=DEFAULT_WINDOW):
+    if r1:
+        return createDepthMap(imageL, imageR, windowSize)
+    elif r2:
+        print("r2")
+    elif r3:
+        print("r3")
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main(args.requisito[0], args.imageL, args.imageR,
-         args.sizeWindow)
+    main(args.r1, args.r2, args.r3, args.img_l, args.img_r,
+         args.windowSize)

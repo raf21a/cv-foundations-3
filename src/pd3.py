@@ -100,7 +100,7 @@ def createDepthMap(imageL, imageR):
     else:
         leftImage = openImage(imageL)
         rightImage = openImage(imageR)
-    dispMatrix, depthMatrix, _, _ = tuneParameters(leftImage, rightImage)
+    dispMatrix, depthMatrix, _, _ = tuneParameters("r1", leftImage, rightImage)
     saveImage(imageL.rstrip("L.png") + "_disp.png", dispMatrix)
     saveImage(imageL.rstrip("L.png") + "_depth.png", depthMatrix)
 
@@ -119,7 +119,7 @@ def depthFromHomography():
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
     translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
 
-    r1, r2, p1, p2, _, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
+    r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
                                                 leftImage.shape[0:2], rotation, translation)
 
     map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
@@ -127,13 +127,17 @@ def depthFromHomography():
     leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
     rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
 
-    dispMatrix, depthMatrix, _, _ = tuneParameters(leftReprojection, rightReprojection)
+    dispMatrix, depthMatrix, _, _ = tuneParameters("r2", leftReprojection, rightReprojection, q)
     saveImage("../data/morpheus_disp.jpg", dispMatrix)
     saveImage("../data/morpheus_depth.jpg", depthMatrix)
 
 
 
 def measureBox(bonus):
+    global first, pos1, pos2
+    first = True
+    pos1 = pos2 = None
+
     if bonus:
         pass
     else:
@@ -142,7 +146,7 @@ def measureBox(bonus):
         rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
         translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
 
-        r1, r2, p1, p2, _, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
+        r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
                                                     leftImage.shape[0:2], rotation, translation)
 
         map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
@@ -150,11 +154,48 @@ def measureBox(bonus):
         leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
         rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
 
-        dispMatrix, depthMatrix, corMatrix, z = tuneParameters(leftReprojection, rightReprojection)
+        dispMatrix, depthMatrix, corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
+
+        cv2.namedWindow('Imagem', cv2.WINDOW_NORMAL)
+        cv2.setMouseCallback('Imagem', getMeasure, [leftReprojection, worldCoords])
+
+        while(True):
+            cv2.imshow("Imagem", leftReprojection)
+            if cv2.waitKey(1) & 0xFF == 27:
+                break
+        cv2.destroyAllWindows()
+        cv2.waitKey(1)
 
 
-def tuneParameters(leftImage, rightImage):
-    print(Otimizar parâmetros....)
+def getMeasure(event, x, y, flags, params):
+    global first, pos1, pos2
+    leftReprojection, worldCoords = params
+    x_w, y_w, z_w = worldCoords
+    if event == cv2.EVENT_LBUTTONUP:
+        if first:
+            pos1 = [x, y]
+        else:
+            pos2 = [x, y]
+        first = not first
+        if pos1 is not None and pos2 is not None:
+            cv2.namedWindow('Medida', cv2.WINDOW_NORMAL)
+            img = leftReprojection
+            cv2.line(img, tuple(pos1),
+                     tuple(pos2), (0, 0, 255), 2)
+            cv2.imshow("Medida", img)
+            x1, y1 = pos1
+            x2, y2 = pos2
+            print("Pos1:{}, Pos2:{}".format((y_w[x2][y2], y_w[x1][y1], z_w[x1][y1]),
+                                            (x_w[x2][y2], y_w[x2][y2], z_w[x2][y2])))
+            height = np.abs(y_w[x1][y1] - y_w[x2][y2])
+            width = np.abs(y_w[x2][y2] - x_w[x2][y2])
+            depth = np.abs(z_w[x1][y1] - z_w[x2][y2])
+            print("Altura: {}\nLargura: {}\nProfundidade={}\n".format(height, width, depth))
+            pos1 = pos2 = None
+
+
+def tuneParameters(req, leftImage, rightImage, q=None):
+    print("Otimizar parâmetros...")
     def nothing(x):
         pass
 
@@ -173,7 +214,11 @@ def tuneParameters(leftImage, rightImage):
         if windowSize < 5:
             windowSize = 5
         corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
-        x, y, z = getWorldCoords(leftImage, corMatrix)
+        if req == "r1":
+            x, y, z = getWorldCoords(leftImage, corMatrix)
+        else:
+            worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=True)
+            x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
         z[z == np.inf] = -np.inf
         z[z == -np.inf] = np.max(z)
         dispMatrix = normalize(np.abs(corMatrix))
@@ -183,7 +228,9 @@ def tuneParameters(leftImage, rightImage):
         if k == 27:
             break
     cv2.destroyAllWindows()
-    return dispMatrix, depthMatrix, corMatrix, z
+    cv2.waitKey(1)
+
+    return dispMatrix, depthMatrix, corMatrix, (x, y, z)
 
 
 def main(r1, r2, r3, imageL=None,

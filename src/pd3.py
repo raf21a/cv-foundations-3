@@ -106,18 +106,18 @@ def createDepthMap(imageL, imageR):
 
 
 def getRotation(r1, r2):
-    return np.dot(r1.T, r2)
+    return np.dot(r2.T, r1)
 
 
-def getTranslation(r1, t1, t2):
-    return np.dot(r1.T, t2) - np.dot(r1.T, t1)
+def getTranslation(r2, t1, t2):
+    return np.linalg.inv(r2).dot(t1 - t2)
 
 
 def depthFromHomography():
     leftImage = openImage("../data/MorpheusL.jpg")
     rightImage = openImage("../data/MorpheusR.jpg")
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-    translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
+    translation = getTranslation(MORPHEUS_RIGHT_ROTATION, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
 
     r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
                                                 leftImage.shape[0:2], rotation, translation)
@@ -125,7 +125,16 @@ def depthFromHomography():
     map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
     map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
     leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
-    rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
+    rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
+
+    cv2.namedWindow('Retificação', cv2.WINDOW_NORMAL)
+
+    while(True):
+        cv2.imshow("Retificação", np.hstack([leftReprojection, rightReprojection]))
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)
 
     dispMatrix, depthMatrix, _, _ = tuneParameters("r2", leftReprojection, rightReprojection, q)
     saveImage("../data/morpheus_disp.jpg", dispMatrix)
@@ -152,7 +161,7 @@ def measureBox(bonus):
         map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
         map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
         leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
-        rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
+        rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
 
         dispMatrix, depthMatrix, corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
 
@@ -214,14 +223,14 @@ def tuneParameters(req, leftImage, rightImage, q=None):
         if windowSize < 5:
             windowSize = 5
         corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
-        if req == "r1":
+        if req == "r1" or req == "r2":
             x, y, z = getWorldCoords(leftImage, corMatrix)
         else:
             worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=True)
             x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
         z[z == np.inf] = -np.inf
         z[z == -np.inf] = np.max(z)
-        dispMatrix = normalize(np.abs(corMatrix))
+        dispMatrix = normalize(corMatrix)
         depthMatrix = normalize(z)
         cv2.imshow("disp", dispMatrix)
         k = cv2.waitKey(1) & 0xFF

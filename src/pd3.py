@@ -106,21 +106,21 @@ def createDepthMap(imageL, imageR):
 
 
 def getRotation(r1, r2):
-    return np.dot(r2.T, r1)
+    return np.matmul(r2, r1.T)
 
 
-def getTranslation(r2, t1, t2):
-    return np.linalg.inv(r2).dot(t1 - t2)
+def getTranslation(r, t1, t2):
+    return t2 - np.matmul(r, t1)
 
 
 def depthFromHomography():
     leftImage = openImage("../data/MorpheusL.jpg")
     rightImage = openImage("../data/MorpheusR.jpg")
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-    translation = getTranslation(MORPHEUS_RIGHT_ROTATION, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
+    translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
 
     r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
-                                                leftImage.shape[0:2], rotation, translation)
+                                                leftImage.shape[0:2], rotation, translation, flags=0)
 
     map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
     map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
@@ -140,13 +140,12 @@ def depthFromHomography():
     saveImage("../data/morpheus_disp.jpg", dispMatrix)
     saveImage("../data/morpheus_depth.jpg", depthMatrix)
 
+
 def depthFromFundamentalMatrix():
 
     #find possible matches
     leftImage = openImage("../data/MorpheusL.jpg")
     rightImage = openImage("../data/MorpheusR.jpg")
-    rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-    translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
 
     sift = cv2.xfeatures2d.SIFT_create()
 
@@ -211,10 +210,10 @@ def measureBox(bonus):
         leftImage = openImage("../data/MorpheusL.jpg")
         rightImage = openImage("../data/MorpheusR.jpg")
         rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-        translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
+        translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
 
         r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
-                                                    leftImage.shape[0:2], rotation, translation)
+                                                    leftImage.shape[0:2], rotation, translation, flags=0)
 
         map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
         map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)

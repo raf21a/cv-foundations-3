@@ -66,7 +66,7 @@ def findPixelMatch(leftImage, rightImage, windowSize, numDisparities=128):
     #    Se não hover correspondencia retorna none
     #    Se houver retorna a coordenada da correspondencia
     #function
-    stereo = cv2.StereoBM_create(numDisparities=numDisparities, blockSize=windowSize)
+    stereo = cv2.StereoSGBM_create(numDisparities=numDisparities, blockSize=windowSize)
     lGray = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
     rGray = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
     return stereo.compute(lGray,rGray)
@@ -78,6 +78,8 @@ def getWorldCoords(leftImage, corMatrix):
     x = BASELINE * (2 * x_coords - corMatrix) / (2 * corMatrix)
     y = BASELINE * (2 * y_coords) / (2 * corMatrix)
     z = BASELINE * FOCAL_DISTANCE  /   corMatrix
+    z[z >= np.inf] = -np.inf
+    z[z <= -np.inf] = np.max(z) + 1
     return x, y, z
 
 
@@ -209,7 +211,7 @@ def measureBox(bonus):
         leftImage = openImage("../data/MorpheusL.jpg")
         rightImage = openImage("../data/MorpheusR.jpg")
         rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-        translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
+        translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
 
         r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
                                                     leftImage.shape[0:2], rotation, translation, flags=0)
@@ -266,7 +268,7 @@ def tuneParameters(req, leftImage, rightImage, q=None):
 
     cv2.namedWindow('disp', cv2.WINDOW_NORMAL)
 
-    cv2.createTrackbar('numOfDisparities', 'disp', 1, 20, nothing)
+    cv2.createTrackbar('numOfDisparities', 'disp', 12, 20, nothing)
     cv2.createTrackbar('windowSize', 'disp', 5, 255, nothing)
 
     while(True):
@@ -284,16 +286,15 @@ def tuneParameters(req, leftImage, rightImage, q=None):
         k = cv2.waitKey(1) & 0xFF
         if k == 27:
             break
-    if req == "r1" or req == "r2":
+    if req == "r1":
         x, y, z = getWorldCoords(leftImage, corMatrix)
     else:
-        worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=True)
+        worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=False)
         x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
-    z[z == np.inf] = -np.inf
-    z[z == -np.inf] = np.max(z)
     depthMatrix = normalize(z)
     cv2.destroyAllWindows()
     cv2.waitKey(1)
+
 
     return dispMatrix, depthMatrix, corMatrix, (x, y, z)
 

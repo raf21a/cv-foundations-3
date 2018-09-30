@@ -8,7 +8,6 @@ import argparse
 import time
 import pdb
 
-DEFAULT_WINDOW = 25
 FOCAL_DISTANCE = 3740 #px
 BASELINE = 160 #mm
 THRESHOLD = 50
@@ -50,8 +49,6 @@ parser.add_argument("--img_l", nargs="?", default=None, metavar="path/to/file",
                     help="Caminho para a imagem da esquerda")
 parser.add_argument("--img_r", nargs="?", default=None, metavar="path/to/file",
                     help="Caminho para a imagem da direita")
-parser.add_argument("--windowSize", nargs="?", default=DEFAULT_WINDOW, type=check_positive_odd,
-                    help="Tamanho da janela utilizazada para o calculo stereoMatching")
 
 
 def openImage(file):
@@ -65,12 +62,12 @@ def openImage(file):
     return img
 
 
-def findPixelMatch(leftImage, rightImage, windowSize):
+def findPixelMatch(leftImage, rightImage, windowSize, numDisparities=128):
     #para o pixel x y imgL achar o correspondente na imgR 
     #    Se não hover correspondencia retorna none
     #    Se houver retorna a coordenada da correspondencia
     #function
-    stereo = cv2.StereoBM_create(numDisparities=128, blockSize=windowSize)
+    stereo = cv2.StereoBM_create(numDisparities, blockSize=windowSize)
     lGray = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
     rGray = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
     return stereo.compute(lGray,rGray)
@@ -94,9 +91,7 @@ def saveImage(name, image):
     print("Salvando {}...".format(name))
     cv2.imwrite(name, image)
 
-def createDepthMap(imageL, imageR, windowSize):
-    if windowSize == DEFAULT_WINDOW:
-        print("Usando janela de comparação de tamanho {}. Use a opção --windowSize para outro tamanho".format(DEFAULT_WINDOW))
+def createDepthMap(imageL, imageR):
     if imageL is None or imageR is None:
         imageL = "../data/aloeL.png"
         print("Criando mapa de profundidade para aloe. Caso deseje a do bebe, use a opção -imageL and -imageR com as imagens correspondentes.")
@@ -105,18 +100,13 @@ def createDepthMap(imageL, imageR, windowSize):
     else:
         leftImage = openImage(imageL)
         rightImage = openImage(imageR)
-    corMatrix = findPixelMatch(leftImage, rightImage, windowSize)
-    x, y, z = getWorldCoords(leftImage, corMatrix)
-    z[z == np.inf] = -np.inf
-    z[z == -np.inf] = np.max(z)
-    dispMatrix = normalize(np.abs(corMatrix))
-    depthMatrix = normalize(z)
+    dispMatrix, depthMatrix, _, _ = tuneParameters(leftImage, rightImage)
     saveImage(imageL.rstrip("L.png") + "_disp.png", dispMatrix)
     saveImage(imageL.rstrip("L.png") + "_depth.png", depthMatrix)
 
 
 def getRotation(r1, r2):
-    return np.matmul(r1.T, r2)
+    return np.dot(r1.T, r2)
 
 
 def getTranslation(r1, t1, t2):
@@ -128,22 +118,87 @@ def depthFromHomography():
     rightImage = openImage("../data/MorpheusR.jpg")
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
     translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
-    r1, r2, p1, p2, q = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, MORPHEUS_RIGHT_CAMERA, None, None, leftImage.shape[0:2], rotation, translation)
+
+    r1, r2, p1, p2, _, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
+                                                leftImage.shape[0:2], rotation, translation)
+
+    map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
+    map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
+    leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
+    rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
+
+    dispMatrix, depthMatrix, _, _ = tuneParameters(leftReprojection, rightReprojection)
+    saveImage("../data/morpheus_disp.jpg", dispMatrix)
+    saveImage("../data/morpheus_depth.jpg", depthMatrix)
+
+
+
+def measureBox(bonus):
+    if bonus:
+        pass
+    else:
+        leftImage = openImage("../data/MorpheusL.jpg")
+        rightImage = openImage("../data/MorpheusR.jpg")
+        rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
+        translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
+
+        r1, r2, p1, p2, _, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
+                                                    leftImage.shape[0:2], rotation, translation)
+
+        map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
+        map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
+        leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
+        rightReprojection = cv2.remap(leftImage, map2x, map2y, cv2.INTER_LINEAR)
+
+        dispMatrix, depthMatrix, corMatrix, z = tuneParameters(leftReprojection, rightReprojection)
+
+
+def tuneParameters(leftImage, rightImage):
+    print(Otimizar parâmetros....)
+    def nothing(x):
+        pass
+
+    cv2.namedWindow('disp', cv2.WINDOW_NORMAL)
+
+    cv2.createTrackbar('numOfDisparities', 'disp', 1, 20, nothing)
+    cv2.createTrackbar('windowSize', 'disp', 5, 255, nothing)
+
+    while(True):
+        numOfDisparities = cv2.getTrackbarPos('numOfDisparities', 'disp') * 16
+        windowSize = cv2.getTrackbarPos('windowSize', 'disp')
+        if numOfDisparities < 16:
+            numOfDisparities = 16
+        if windowSize % 2 == 0:
+            windowSize += 1
+        if windowSize < 5:
+            windowSize = 5
+        corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
+        x, y, z = getWorldCoords(leftImage, corMatrix)
+        z[z == np.inf] = -np.inf
+        z[z == -np.inf] = np.max(z)
+        dispMatrix = normalize(np.abs(corMatrix))
+        depthMatrix = normalize(z)
+        cv2.imshow("disp", dispMatrix)
+        k = cv2.waitKey(1) & 0xFF
+        if k == 27:
+            break
+    cv2.destroyAllWindows()
+    return dispMatrix, depthMatrix, corMatrix, z
+
 
 def main(r1, r2, r3, imageL=None,
-         imageR=None, windowSize=DEFAULT_WINDOW, bonus=None):
+         imageR=None, bonus=None):
     if r1:
-        return createDepthMap(imageL, imageR, windowSize)
+        return createDepthMap(imageL, imageR)
     elif r2:
         if bonus:
             pass
         else:
             return depthFromHomography()
     elif r3:
-        print("r3")
+        measureBox(bonus)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    main(args.r1, args.r2, args.r3, args.img_l, args.img_r,
-         args.windowSize, args.bonus)
+    main(args.r1, args.r2, args.r3, args.img_l, args.img_r, args.bonus)

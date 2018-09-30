@@ -67,7 +67,7 @@ def findPixelMatch(leftImage, rightImage, windowSize, numDisparities=128):
     #    Se não hover correspondencia retorna none
     #    Se houver retorna a coordenada da correspondencia
     #function
-    stereo = cv2.StereoBM_create(numDisparities, blockSize=windowSize)
+    stereo = cv2.StereoBM_create(numDisparities=numDisparities, blockSize=windowSize)
     lGray = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
     rGray = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
     return stereo.compute(lGray,rGray)
@@ -280,19 +280,19 @@ def tuneParameters(req, leftImage, rightImage, q=None):
         if windowSize < 5:
             windowSize = 5
         corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
-        if req == "r1" or req == "r2":
-            x, y, z = getWorldCoords(leftImage, corMatrix)
-        else:
-            worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=True)
-            x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
-        z[z == np.inf] = -np.inf
-        z[z == -np.inf] = np.max(z)
         dispMatrix = normalize(corMatrix)
-        depthMatrix = normalize(z)
         cv2.imshow("disp", dispMatrix)
         k = cv2.waitKey(1) & 0xFF
         if k == 27:
             break
+    if req == "r1" or req == "r2":
+        x, y, z = getWorldCoords(leftImage, corMatrix)
+    else:
+        worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=True)
+        x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
+    z[z == np.inf] = -np.inf
+    z[z == -np.inf] = np.max(z)
+    depthMatrix = normalize(z)
     cv2.destroyAllWindows()
     cv2.waitKey(1)
 

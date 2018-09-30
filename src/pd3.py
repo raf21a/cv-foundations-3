@@ -185,10 +185,19 @@ def depthFromFundamentalMatrix():
     p1fNew = pts1.reshape((pts1.shape[0] * 2, 1))
     p2fNew = pts2.reshape((pts2.shape[0] * 2, 1))
     retBool ,rectmat1, rectmat2 = cv2.stereoRectifyUncalibrated(p1fNew,p2fNew,F,(2048,2048))
-    dst11 = cv2.warpPerspective(dst1,rectmat1,(2048,2048))
-    dst22 = cv2.warpPerspective(dst2,rectmat2,(2048,2048))
-    cv2.imshow("Teste1",dst11)
-    cv2.imshow("Teste2",dst22)
+    dst1 = cv2.warpPerspective(leftImage,rectmat1,(2048,2048))
+    dst2 = cv2.warpPerspective(rightImage,rectmat2,(2048,2048))
+
+    cv2.namedWindow('Teste 1', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Teste 2', cv2.WINDOW_NORMAL)
+
+    while(True):
+        cv2.imshow("Teste 1", dst1)
+        cv2.imshow("Teste 2", dst2)
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)
     
 
 def measureBox(bonus):

@@ -140,7 +140,56 @@ def depthFromHomography():
     saveImage("../data/morpheus_disp.jpg", dispMatrix)
     saveImage("../data/morpheus_depth.jpg", depthMatrix)
 
+def depthFromFundamentalMatrix():
 
+    #find possible matches
+    leftImage = openImage("../data/MorpheusL.jpg")
+    rightImage = openImage("../data/MorpheusR.jpg")
+    rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
+    translation = getTranslation(MORPHEUS_LEFT_ROTATION, MORPHEUS_LEFT_TRANSLATION.T, MORPHEUS_RIGHT_TRANSLATION.T)
+
+    sift = cv2.xfeatures2d.SIFT_create()
+
+    kpl, descriptorLeft = sift.detectAndCompute(leftImage,None)
+    kpr, descriptorRight = sift.detectAndCompute(rightImage,None)
+
+    FLANN_INDEX_KDTREE = 0
+    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_params = dict(checks=50)
+
+    flann = cv2.FlannBasedMatcher(index_params,search_params)
+    matches = flann.knnMatch(descriptorLeft,descriptorRight,k=2)
+
+    good = []
+    pts1 = []
+    pts2 = []
+
+    for i,(m,n) in enumerate(matches):
+        if m.distance < 0.8*n.distance:
+            good.append(m)
+            pts2.append(kpr[m.trainIdx].pt)
+            pts1.append(kpl[m.queryIdx].pt)
+    #possible matches: pts1 and pts2
+
+    pts1 = np.array(pts1)
+    pts2 = np.array(pts2)
+    F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
+
+    # We select only inlier points
+    pts1 = pts1[mask.ravel()==1]
+    pts2 = pts2[mask.ravel()==1]
+
+    pts1 = np.int32(pts1)
+    pts2 = np.int32(pts2)
+
+    p1fNew = pts1.reshape((pts1.shape[0] * 2, 1))
+    p2fNew = pts2.reshape((pts2.shape[0] * 2, 1))
+    retBool ,rectmat1, rectmat2 = cv2.stereoRectifyUncalibrated(p1fNew,p2fNew,F,(2048,2048))
+    dst11 = cv2.warpPerspective(dst1,rectmat1,(2048,2048))
+    dst22 = cv2.warpPerspective(dst2,rectmat2,(2048,2048))
+    cv2.imshow("Teste1",dst11)
+    cv2.imshow("Teste2",dst22)
+    
 
 def measureBox(bonus):
     global first, pos1, pos2
@@ -248,7 +297,7 @@ def main(r1, r2, r3, imageL=None,
         return createDepthMap(imageL, imageR)
     elif r2:
         if bonus:
-            pass
+            depthFromFundamentalMatrix()
         else:
             return depthFromHomography()
     elif r3:

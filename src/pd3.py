@@ -5,8 +5,7 @@ import cv2
 import numpy as np
 import sys
 import argparse
-import time
-import pdb
+import os
 
 FOCAL_DISTANCE = 3740 #px
 BASELINE = 160 #mm
@@ -101,8 +100,8 @@ def createDepthMap(imageL, imageR):
         leftImage = openImage(imageL)
         rightImage = openImage(imageR)
     dispMatrix, depthMatrix, _, _ = tuneParameters("r1", leftImage, rightImage)
-    saveImage(imageL.rstrip("L.png") + "_disp.png", dispMatrix)
-    saveImage(imageL.rstrip("L.png") + "_depth.png", depthMatrix)
+    saveImage("../" + os.path.basename(imageL).rstrip("L.png") + "_disp.png", dispMatrix)
+    saveImage("../" + os.path.basename(imageL).rstrip("L.png") + "_depth.png", depthMatrix)
 
 
 def getRotation(r1, r2):
@@ -137,8 +136,8 @@ def depthFromHomography():
     cv2.waitKey(1)
 
     dispMatrix, depthMatrix, _, _ = tuneParameters("r2", leftReprojection, rightReprojection, q)
-    saveImage("../data/morpheus_disp.jpg", dispMatrix)
-    saveImage("../data/morpheus_depth.jpg", depthMatrix)
+    saveImage("../morpheus_disp.jpg", dispMatrix)
+    saveImage("../morpheus_depth.jpg", depthMatrix)
 
 
 def depthFromFundamentalMatrix():

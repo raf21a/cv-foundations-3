@@ -99,7 +99,9 @@ def createDepthMap(imageL, imageR):
     else:
         leftImage = openImage(imageL)
         rightImage = openImage(imageR)
-    dispMatrix, depthMatrix, _, _ = tuneParameters("r1", leftImage, rightImage)
+    corMatrix, (x, y, z) = tuneParameters("r1", leftImage, rightImage)
+    dispMatrix = normalize(corMatrix)
+    depthMatrix = normalize(z)
     saveImage(os.path.basename(imageL).rstrip("L.png") + "_disp.png", dispMatrix)
     saveImage(os.path.basename(imageL).rstrip("L.png") + "_depth.png", depthMatrix)
 
@@ -135,7 +137,9 @@ def depthFromHomography():
     cv2.destroyAllWindows()
     cv2.waitKey(1)
 
-    dispMatrix, depthMatrix, _, _ = tuneParameters("r2", leftReprojection, rightReprojection, q)
+    corMatrix, (x, y, z) = tuneParameters("r2", leftReprojection, rightReprojection, q)
+    dispMatrix = normalize(corMatrix)
+    depthMatrix = normalize(z)
     saveImage("morpheus_disp.jpg", dispMatrix)
     saveImage("morpheus_depth.jpg", depthMatrix)
 
@@ -145,8 +149,8 @@ def measureBox():
     first = True
     pos1 = pos2 = None
 
-    leftImage = openImage("MorpheusL.jpg")
-    rightImage = openImage("MorpheusR.jpg")
+    leftImage = openImage("data/MorpheusL.jpg")
+    rightImage = openImage("data/MorpheusR.jpg")
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
     translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
 
@@ -158,13 +162,14 @@ def measureBox():
     leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
     rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
 
-    dispMatrix, depthMatrix, corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
+    corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
+    dispMatrix = normalize(corMatrix)
 
     cv2.namedWindow('Imagem', cv2.WINDOW_NORMAL)
-    cv2.setMouseCallback('Imagem', getMeasure, [leftReprojection, worldCoords])
+    cv2.setMouseCallback('Imagem', getMeasure, [dispMatrix, worldCoords])
 
     while(True):
-        cv2.imshow("Imagem", leftReprojection)
+        cv2.imshow("Imagem", dispMatrix)
         if cv2.waitKey(1) & 0xFF == 27:
             break
     cv2.destroyAllWindows()
@@ -173,7 +178,7 @@ def measureBox():
 
 def getMeasure(event, x, y, flags, params):
     global first, pos1, pos2
-    leftReprojection, worldCoords = params
+    img, worldCoords = params
     x_w, y_w, z_w = worldCoords
     if event == cv2.EVENT_LBUTTONUP:
         if first:
@@ -183,18 +188,18 @@ def getMeasure(event, x, y, flags, params):
         first = not first
         if pos1 is not None and pos2 is not None:
             cv2.namedWindow('Medida', cv2.WINDOW_NORMAL)
-            img = leftReprojection
             cv2.line(img, tuple(pos1),
                      tuple(pos2), (0, 0, 255), 2)
             cv2.imshow("Medida", img)
             x1, y1 = pos1
             x2, y2 = pos2
-            print("Pos1:{}, Pos2:{}".format((y_w[x2][y2], y_w[x1][y1], z_w[x1][y1]),
+            print("Pos1:{}, Pos2:{}".format((x_w[x1][y1], y_w[x1][y1], z_w[x1][y1]),
                                             (x_w[x2][y2], y_w[x2][y2], z_w[x2][y2])))
-            height = np.abs(y_w[x1][y1] - y_w[x2][y2])
-            width = np.abs(y_w[x2][y2] - x_w[x2][y2])
-            depth = np.abs(z_w[x1][y1] - z_w[x2][y2])
-            print("Altura: {}\nLargura: {}\nProfundidade={}\n".format(height, width, depth))
+            distance = np.linalg.norm(np.hstack([x_w[x2][y2] - x_w[x1][y1],
+                                                 y_w[x2][y2] - y_w[x1][y1],
+                                                 z_w[x2][y2] - z_w[x1][y1]]))
+
+            print("Distância={}\n".format(distance))
             pos1 = pos2 = None
 
 
@@ -218,8 +223,7 @@ def tuneParameters(req, leftImage, rightImage, q=None):
         if windowSize < 5:
             windowSize = 5
         corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
-        dispMatrix = normalize(corMatrix)
-        cv2.imshow("disp", dispMatrix)
+        cv2.imshow("disp", normalize(corMatrix))
         k = cv2.waitKey(1) & 0xFF
         if k == 27:
             break
@@ -228,12 +232,10 @@ def tuneParameters(req, leftImage, rightImage, q=None):
     else:
         worldCoords = cv2.reprojectImageTo3D(corMatrix, q, handleMissingValues=False)
         x, y, z = worldCoords[:,:,0], worldCoords[:,:,1], worldCoords[:,:,2]
-    depthMatrix = normalize(z)
     cv2.destroyAllWindows()
     cv2.waitKey(1)
 
-
-    return dispMatrix, depthMatrix, corMatrix, (x, y, z)
+    return corMatrix, (x, y, z)
 
 
 def main(r1, r2, r3, imageL=None,

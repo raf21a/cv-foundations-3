@@ -7,9 +7,8 @@ import sys
 import argparse
 import os
 
-FOCAL_DISTANCE = 3740 #px
-BASELINE = 160 #mm
-THRESHOLD = 50
+FOCAL_DISTANCE = 3740.0 #px
+BASELINE = 160.0 #mm
 MORPHEUS_LEFT_CAMERA = np.array([[6704.926882, 0.000103,    738.251932],
                                  [0.,          6705.241311, 457.560286],
                                  [0.,          0.,          1.]])
@@ -59,12 +58,24 @@ def openImage(file):
     return img
 
 
-def findPixelMatch(leftImage, rightImage, windowSize, numDisparities=128):
+def findPixelMatch(leftImage, rightImage, windowSize, numDisparities=128, r1=False):
     #para o pixel x y imgL achar o correspondente na imgR 
     #    Se não hover correspondencia retorna none
     #    Se houver retorna a coordenada da correspondencia
     #function
-    stereo = cv2.StereoSGBM_create(numDisparities=numDisparities, blockSize=windowSize)
+    stereo = cv2.StereoBM_create(numDisparities=numDisparities, blockSize=windowSize)
+    if not r1:
+        stereo.setMinDisparity(-39)
+        stereo.setSpeckleRange(16)
+        stereo.setPreFilterSize(5)
+        stereo.setPreFilterCap(61)
+        stereo.setTextureThreshold(507)
+        stereo.setSpeckleWindowSize(0)
+        stereo.setSpeckleRange(8)
+        stereo.setDisp12MaxDiff(1)
+        stereo.setUniquenessRatio(0)
+    else:
+        stereo.setMinDisparity(0)
     lGray = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
     rGray = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
     return stereo.compute(lGray,rGray)
@@ -75,9 +86,11 @@ def getWorldCoords(leftImage, corMatrix):
     y_coords = np.arange(0, leftImage.shape[0]).reshape(leftImage.shape[0], 1)
     x = BASELINE * (2 * x_coords - corMatrix) / (2 * corMatrix)
     y = BASELINE * (2 * y_coords) / (2 * corMatrix)
-    z = BASELINE * FOCAL_DISTANCE  /   corMatrix
-    z[z >= np.inf] = -np.inf
-    z[z <= -np.inf] = np.max(z) + 1
+    z = BASELINE * FOCAL_DISTANCE  /   (corMatrix)
+    z[z == np.inf] = -np.inf
+    z[z == -np.inf] = np.amax(z) + 10
+    z = -z
+
     return x, y, z
 
 
@@ -92,16 +105,17 @@ def saveImage(name, image):
 
 def createDepthMap(imageL, imageR):
     if imageL is None or imageR is None:
-        imageL = "../data/aloeL.png"
+        imageL = "data/aloeL.png"
         print("Criando mapa de profundidade para aloe. Caso deseje a do bebe, use a opção -imageL and -imageR com as imagens correspondentes.")
         leftImage = openImage("data/aloeL.png")
-        rightImage = openImage("/data/aloeR.png")
+        rightImage = openImage("data/aloeR.png")
     else:
         leftImage = openImage(imageL)
         rightImage = openImage(imageR)
     corMatrix, (x, y, z) = tuneParameters("r1", leftImage, rightImage)
     dispMatrix = normalize(corMatrix)
     depthMatrix = normalize(z)
+
     saveImage(os.path.basename(imageL).rstrip("L.png") + "_disp.png", dispMatrix)
     saveImage(os.path.basename(imageL).rstrip("L.png") + "_depth.png", depthMatrix)
 
@@ -128,7 +142,7 @@ def depthFromHomography():
     leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
     rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
 
-    cv2.namedWindow('Retificação', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Retificação', cv2.WINDOW_KEEPRATIO)
 
     while(True):
         cv2.imshow("Retificação", np.hstack([leftReprojection, rightReprojection]))
@@ -165,7 +179,7 @@ def measureBox():
     corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
     dispMatrix = normalize(corMatrix)
 
-    cv2.namedWindow('Imagem', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('Imagem', cv2.WINDOW_KEEPRATIO)
     cv2.setMouseCallback('Imagem', getMeasure, [dispMatrix, worldCoords])
 
     while(True):
@@ -187,10 +201,6 @@ def getMeasure(event, x, y, flags, params):
             pos2 = [x, y]
         first = not first
         if pos1 is not None and pos2 is not None:
-            cv2.namedWindow('Medida', cv2.WINDOW_NORMAL)
-            cv2.line(img, tuple(pos1),
-                     tuple(pos2), (0, 0, 255), 2)
-            cv2.imshow("Medida", img)
             x1, y1 = pos1
             x2, y2 = pos2
             print("Pos1:{}, Pos2:{}".format((x_w[x1][y1], y_w[x1][y1], z_w[x1][y1]),
@@ -208,7 +218,7 @@ def tuneParameters(req, leftImage, rightImage, q=None):
     def nothing(x):
         pass
 
-    cv2.namedWindow('disp', cv2.WINDOW_NORMAL)
+    cv2.namedWindow('disp', cv2.WINDOW_KEEPRATIO)
 
     cv2.createTrackbar('numOfDisparities', 'disp', 12, 20, nothing)
     cv2.createTrackbar('windowSize', 'disp', 5, 255, nothing)
@@ -222,7 +232,8 @@ def tuneParameters(req, leftImage, rightImage, q=None):
             windowSize += 1
         if windowSize < 5:
             windowSize = 5
-        corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities)
+        flag = ("r1" == req)
+        corMatrix = findPixelMatch(leftImage, rightImage, windowSize, numOfDisparities, flag)
         cv2.imshow("disp", normalize(corMatrix))
         k = cv2.waitKey(1) & 0xFF
         if k == 27:

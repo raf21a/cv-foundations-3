@@ -143,9 +143,13 @@ def depthFromHomography():
     rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
 
     cv2.namedWindow('Retificação', cv2.WINDOW_KEEPRATIO)
+    retification = np.hstack([leftReprojection, rightReprojection])
+    for row in range(retification.shape[0]):
+        if row % 50 == 0:
+            cv2.line(retification, (0, row), (retification.shape[1], row), (0, 255, 0), 3)
 
     while(True):
-        cv2.imshow("Retificação", np.hstack([leftReprojection, rightReprojection]))
+        cv2.imshow("Retificação", retification)
         if cv2.waitKey(1) & 0xFF == 27:
             break
     cv2.destroyAllWindows()
@@ -163,8 +167,8 @@ def measureBox():
     first = True
     pos1 = pos2 = None
 
-    leftImage = openImage("data/MorpheusL.jpg")
-    rightImage = openImage("data/MorpheusR.jpg")
+    leftImage = openImage("data/MorpheusR.jpg")
+    rightImage = openImage("data/MorpheusL.jpg")
     rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
     translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
 

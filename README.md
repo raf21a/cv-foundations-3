@@ -31,9 +31,9 @@ Third project of discipline Computer Vision Foundations
 	- Selecionar parâmetros até ficar satisfeito com o resultado, apertar esc.
 	- Mapas seram salvos na raiz do projeto
 - Requisito 2:
-	- Apareceram as imagens retificadas. Apertar esc.
+	- Aparecerão as imagens retificadas. Apertar esc.
 	- A partir daqui, mesmo procedimento do requisito 1
 - Requisito 3:
-	- Apareceram as imagens retificadas. Apertar esc.
+	- Aparecerão as imagens retificadas. Apertar esc.
 	- Selecionar parâmetros até ficar satisfeito com o resultado, apertar esc.
 	- Usar o mouse para clicar os pontos cujos quais deseja-se medir a distância.

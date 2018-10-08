@@ -24,14 +24,6 @@ MORPHEUS_RIGHT_ROTATION = np.array([[0.48946344,  0.87099159, -0.04241701],
                                    [-0.80392924,  0.43186419, -0.40889007]])
 MORPHEUS_RIGHT_TRANSLATION = np.array([-614.549000, 193.240700, 3242.754000])
 
-
-def check_positive_odd(value):
-    ivalue = int(value)
-    if ivalue % 2 == 0 or ivalue <= 0:
-         raise argparse.ArgumentTypeError("%s is an even value or not positive" % value)
-    return ivalue
-
-
 parser = argparse.ArgumentParser(
     description="Visão Stereo")
 group = parser.add_mutually_exclusive_group(required=True)

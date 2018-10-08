@@ -169,25 +169,37 @@ def measureBox():
 
     leftImage = openImage("data/MorpheusR.jpg")
     rightImage = openImage("data/MorpheusL.jpg")
-    rotation = getRotation(MORPHEUS_LEFT_ROTATION, MORPHEUS_RIGHT_ROTATION)
-    translation = getTranslation(rotation, MORPHEUS_LEFT_TRANSLATION, MORPHEUS_RIGHT_TRANSLATION)
+    rotation = getRotation(MORPHEUS_RIGHT_ROTATION, MORPHEUS_LEFT_ROTATION)
+    translation = getTranslation(rotation, MORPHEUS_RIGHT_TRANSLATION, MORPHEUS_LEFT_TRANSLATION)
 
-    r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_LEFT_CAMERA, None, MORPHEUS_RIGHT_CAMERA, None,
+    r1, r2, p1, p2, q, _, _ = cv2.stereoRectify(MORPHEUS_RIGHT_CAMERA, None, MORPHEUS_LEFT_CAMERA, None,
                                                 leftImage.shape[0:2], rotation, translation, flags=0)
 
-    map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
-    map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
+    map1x, map1y = cv2.initUndistortRectifyMap(MORPHEUS_RIGHT_CAMERA, None, r1, p1, leftImage.shape[0:2], cv2.CV_32FC1)
+    map2x, map2y = cv2.initUndistortRectifyMap(MORPHEUS_LEFT_CAMERA, None, r2, p2, leftImage.shape[0:2], cv2.CV_32FC1)
     leftReprojection = cv2.remap(leftImage, map1x, map1y, cv2.INTER_LINEAR)
     rightReprojection = cv2.remap(rightImage, map2x, map2y, cv2.INTER_LINEAR)
 
-    corMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
-    dispMatrix = normalize(corMatrix)
+    cv2.namedWindow('Retificação', cv2.WINDOW_KEEPRATIO)
+    retification = np.hstack([leftReprojection, rightReprojection])
+    for row in range(retification.shape[0]):
+        if row % 50 == 0:
+            cv2.line(retification, (0, row), (retification.shape[1], row), (0, 255, 0), 3)
+
+    while(True):
+        cv2.imshow("Retificação", retification)
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+    cv2.destroyAllWindows()
+    cv2.waitKey(1)
+
+    dispMatrix, worldCoords = tuneParameters("r3", leftReprojection, rightReprojection, q)
 
     cv2.namedWindow('Imagem', cv2.WINDOW_KEEPRATIO)
     cv2.setMouseCallback('Imagem', getMeasure, [dispMatrix, worldCoords])
 
     while(True):
-        cv2.imshow("Imagem", dispMatrix)
+        cv2.imshow("Imagem", normalize(dispMatrix))
         if cv2.waitKey(1) & 0xFF == 27:
             break
     cv2.destroyAllWindows()
